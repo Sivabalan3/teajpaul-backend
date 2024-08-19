@@ -43,7 +43,7 @@ exports.uploadCustomerOrder = async (req, res) => {
 
     // Process each row from the uploaded file
     worksheet.forEach((orderRow) => {
-      const { EAN, Qty, Price } = orderRow;
+      const { EAN, Qty, Price, MRP } = orderRow;
       const orderEan = String(EAN).trim();
 
       if (articleType === "D-mart") {
@@ -68,7 +68,7 @@ exports.uploadCustomerOrder = async (req, res) => {
           // Filter ItemMasterData for matching Brandcode and MKSU
           const matchingMasterRows = masterData.filter(
             (master) =>
-              String(master.ItemCode).trim() === String(Brandcode).trim() &&
+              // String(master.ItemCode).trim() === String(Brandcode).trim() &&
               String(master.MKSU).trim() === String(MKSU).trim()
           );
 
@@ -93,17 +93,35 @@ exports.uploadCustomerOrder = async (req, res) => {
             );
 
             if (batchMatch) {
+              const isMKSUEqual =
+                String(MKSU).trim() === String(masterRow.MKSU).trim() &&
+                String(MKSU).trim() === String(batchMatch.MKSU).trim();
+
+              const NEW_MKSU_COLUMN = MKSU;
+              const NEW_ItemCode_COLUMN =
+                MKSU === batchMatch.MKSU && masterRow.MKSU
+                  ? masterRow.ItemCode
+                  : "UNKNOWN ItemCode";
               const qtyProblem =
-                Number(batchMatch.Qty) < Number(Qty) ? "Quantity Problem" : "";
+                Number(batchMatch.UOM1_Qty) <= Number(Qty)
+                  ? "Quantity Problem"
+                  : "";
               const priceProblem =
-                Number(batchMatch.Price) > Number(Price) ? "Price Problem" : "";
+                Number(batchMatch.MRPPerPack) > Number(MRP)
+                  ? "Price Problem"
+                  : "";
 
               if (
-                Number(batchMatch.Qty) >= Number(Qty) &&
-                Number(batchMatch.Price) <= Number(Price)
+                Number(batchMatch.UOM1_Qty) >= Number(Qty) &&
+                Number(batchMatch.MRPPerPack) <= Number(MRP)
               ) {
                 // Success order - Add to ordersToUpdate
-                ordersToUpdate.push(orderRow);
+
+                ordersToUpdate.push({
+                  ...orderRow,
+                  MKSU: NEW_MKSU_COLUMN, // Add NEW_MKSU_COLUMN to the orderRow
+                  ItemCode: NEW_ItemCode_COLUMN,
+                });
               } else if (qtyProblem) {
                 // Pending order - Add to pendingorder
                 pendingorder.push({ ...orderRow, qtyProblem });
