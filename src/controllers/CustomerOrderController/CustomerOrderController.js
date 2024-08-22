@@ -75,8 +75,9 @@ exports.uploadCustomerOrder = async (req, res) => {
           if (matchingMasterRows.length === 0) {
             // Out of Stock - Add to outOfStocks if conditions are met
             if (
-              orderEan !== String(matchedDmartArticle.EAN).trim() &&
-              String(Brandcode).trim() !== String(masterData.ItemCode).trim()
+              orderEan !== String(matchedDmartArticle.EAN).trim()
+              //  &&
+              // String(Brandcode).trim() !== String(masterData.ItemCode).trim()
             ) {
               outOfStocks.push(orderRow);
             }
@@ -93,14 +94,14 @@ exports.uploadCustomerOrder = async (req, res) => {
             );
 
             if (batchMatch) {
-              const isMKSUEqual =
-                String(MKSU).trim() === String(masterRow.MKSU).trim() &&
-                String(MKSU).trim() === String(batchMatch.MKSU).trim();
+              // const isMKSUEqual =
+              //   String(MKSU).trim() === String(masterRow.MKSU).trim() &&
+              //   String(MKSU).trim() === String(batchMatch.MKSU).trim();
 
               const NEW_MKSU_COLUMN = MKSU;
               const NEW_ItemCode_COLUMN =
                 MKSU === batchMatch.MKSU && masterRow.MKSU
-                  ? masterRow.ItemCode
+                  ? batchMatch.ItemCode
                   : "UNKNOWN ItemCode";
               const qtyProblem =
                 Number(batchMatch.UOM1_Qty) <= Number(Qty)
