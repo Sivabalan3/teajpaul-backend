@@ -29,27 +29,25 @@ exports.uploadBatchExcel = async (req, res) => {
       );
 
       // Calculate the totalQty for matching items in masterData
-      const totalQty = Math.round(
-        masterData
-          .filter((master) => String(master.ItemCode).trim() === batchItemCode)
-          .reduce(
-            (sum, master) => sum + master.UOM1_Piece / batchRow.SaleableStock,
-            0
-          )
-      );
+      const calculatedUom2_Piece_Qty = masterData
+        .filter((master) => String(master.ItemCode).trim() === batchItemCode)
+        .map((master) => {
+          // Calculation and rounding based on matching item codes
+          return Math.round(batchRow.SaleableStock / master.UOM2_Piece);
+        });
 
       if (masterRow) {
         return {
           ...batchRow,
           MKSU: masterRow.MKSU, // Add the MKSU field from master data
           MRPPerPack: masterRow.MRPPerPack, //masterrow.MRPPerPack
-          UOM1_Qty: totalQty, //add master.UOM1_Piece divide by batchRow.SaleableStock
+          UOM2_Piece_Qty: calculatedUom2_Piece_Qty, //add master.UOM1_Piece divide by batchRow.SaleableStock
         };
       } else {
         return {
           ...batchRow,
           MKSU: "INVALID", // Set MKSU to "INVALID" if no match is found
-          UOM1_Qty: 0, // Set Qty to 0 if no match is found
+          UOM2_Piece_Qty: 0, // Set Qty to 0 if no match is found
         };
       }
     });

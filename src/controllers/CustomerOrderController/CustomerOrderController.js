@@ -79,7 +79,7 @@ exports.uploadCustomerOrder = async (req, res) => {
               //  &&
               // String(Brandcode).trim() !== String(masterData.ItemCode).trim()
             ) {
-              outOfStocks.push(orderRow);
+              outOfStocks.push({...orderRow});
             }
             return;
           }
@@ -92,40 +92,48 @@ exports.uploadCustomerOrder = async (req, res) => {
                 String(batch.ItemCode).trim() === masterRow.ItemCode &&
                 String(batch.MKSU).trim() === masterRow.MKSU
             );
-
+          
             if (batchMatch) {
-              // const isMKSUEqual =
-              //   String(MKSU).trim() === String(masterRow.MKSU).trim() &&
-              //   String(MKSU).trim() === String(batchMatch.MKSU).trim();
-
               const NEW_MKSU_COLUMN = MKSU;
               const NEW_ItemCode_COLUMN =
                 MKSU === batchMatch.MKSU && masterRow.MKSU
                   ? batchMatch.ItemCode
                   : "UNKNOWN ItemCode";
+          
               const qtyProblem =
-                Number(batchMatch.UOM1_Qty) <= Number(Qty)
+                Number(batchMatch.UOM1_Qty) < Number(Qty)
                   ? "Quantity Problem"
                   : "";
               const priceProblem =
                 Number(batchMatch.MRPPerPack) > Number(MRP)
                   ? "Price Problem"
                   : "";
-
+          
               if (
                 Number(batchMatch.UOM1_Qty) >= Number(Qty) &&
                 Number(batchMatch.MRPPerPack) <= Number(MRP)
               ) {
                 // Success order - Add to ordersToUpdate
-
                 ordersToUpdate.push({
                   ...orderRow,
-                  MKSU: NEW_MKSU_COLUMN, // Add NEW_MKSU_COLUMN to the orderRow
+                  MKSU: NEW_MKSU_COLUMN,
                   ItemCode: NEW_ItemCode_COLUMN,
                 });
               } else if (qtyProblem) {
-                // Pending order - Add to pendingorder
-                pendingorder.push({ ...orderRow, qtyProblem });
+                // Check if the MKSU is already in ordersToUpdate
+                const isInOrdersToUpdate = ordersToUpdate.some(
+                  (order) => order.MKSU === batchMatch.MKSU
+                );
+          
+                // If not in ordersToUpdate, add to pendingorder
+                if (!isInOrdersToUpdate) {
+                  pendingorder.push({
+                    ...orderRow,
+                    MKSU: NEW_MKSU_COLUMN,
+                    ItemCode: NEW_ItemCode_COLUMN,
+                    qtyProblem,
+                  });
+                }
               } else if (priceProblem) {
                 // Value mismatch - Add to valuemismatch
                 valuemismatch.push({ ...orderRow, priceProblem });
@@ -135,6 +143,8 @@ exports.uploadCustomerOrder = async (req, res) => {
               outOfStocks.push(orderRow);
             }
           });
+          
+          
         });
       }
     });
