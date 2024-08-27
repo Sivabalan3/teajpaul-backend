@@ -5,6 +5,7 @@ const BatchOrder = require("../../Models/BatchExcelData");
 const OutOfStock = require("../../Models/OutOfOrderData");
 const Valuemismatch = require("../../Models/valueMismatchig");
 const DmartArticleMaster = require("../../Models/Article/DmartArticle");
+const DmartQutation = require("../../Models/Qutations/DmartQuotationData");
 const XLSX = require("xlsx");
 
 exports.uploadCustomerOrder = async (req, res) => {
@@ -27,13 +28,15 @@ exports.uploadCustomerOrder = async (req, res) => {
     const worksheet = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
     // Retrieve item master data and batch data
-    const masterData = await ItemMaster.find().lean();
-    const batchData = await BatchOrder.find().lean();
-    let dmartData = [];
-    // D-Mart logic
-    if (articleType === "D-mart") {
-      dmartData = await DmartArticleMaster.find().lean();
-    }
+    const [masterData, batchData, dmartData, dmartQutationData] =
+      await Promise.all([
+        ItemMaster.find().lean(),
+        BatchOrder.find().lean(),
+        articleType === "D-mart"
+          ? DmartArticleMaster.find().lean()
+          : Promise.resolve([]),
+        articleType === "D-mart" ? DmartQutation.find().lean() : [],
+      ]);
 
     // Initialize arrays for orders
     const ordersToUpdate = [];
@@ -42,12 +45,12 @@ exports.uploadCustomerOrder = async (req, res) => {
     const pendingorder = [];
 
     // Process each row from the uploaded file
-    worksheet.forEach((orderRow) => {
+    for (const orderRow of worksheet) {
       const { EAN, Qty, Price, MRP } = orderRow;
       const orderEan = String(EAN).trim();
+      let remainingQty = Number(Qty); // Start with the total order quantity
 
       if (articleType === "D-mart") {
-        // Filter all matching EAN entries from DmartArticleMaster
         const matchedDmartArticles = dmartData.filter(
           (dmart) => String(dmart.EAN).trim() === orderEan
         );
@@ -58,96 +61,118 @@ exports.uploadCustomerOrder = async (req, res) => {
             orderEan,
             "in D-mart articles."
           );
-          return;
+          continue;
         }
 
-        // Process each matched D-mart article
-        matchedDmartArticles.forEach((matchedDmartArticle) => {
+        for (const matchedDmartArticle of matchedDmartArticles) {
           const { Brandcode, MKSU } = matchedDmartArticle;
 
-          // Filter ItemMasterData for matching Brandcode and MKSU
           const matchingMasterRows = masterData.filter(
-            (master) =>
-              // String(master.ItemCode).trim() === String(Brandcode).trim() &&
-              String(master.MKSU).trim() === String(MKSU).trim()
+            (master) => String(master.MKSU).trim() === String(MKSU).trim()
           );
 
           if (matchingMasterRows.length === 0) {
-            // Out of Stock - Add to outOfStocks if conditions are met
-            if (
-              orderEan !== String(matchedDmartArticle.EAN).trim()
-              //  &&
-              // String(Brandcode).trim() !== String(masterData.ItemCode).trim()
-            ) {
-              outOfStocks.push({...orderRow});
+            if (orderEan !== String(matchedDmartArticle.EAN).trim()) {
+              outOfStocks.push({ ...orderRow });
             }
-            return;
+            continue;
           }
 
-          // Process each matched master row
-          matchingMasterRows.forEach((masterRow) => {
-            // Match ItemCode and MKSU with BatchOrder
-            const batchMatch = batchData.find(
+          for (const masterRow of matchingMasterRows) {
+            const batchMatches = batchData.filter(
               (batch) =>
-                String(batch.ItemCode).trim() === masterRow.ItemCode &&
+                // String(batch.ItemCode).trim() === masterRow.ItemCode &&
                 String(batch.MKSU).trim() === masterRow.MKSU
             );
-          
-            if (batchMatch) {
-              const NEW_MKSU_COLUMN = MKSU;
-              const NEW_ItemCode_COLUMN =
-                MKSU === batchMatch.MKSU && masterRow.MKSU
-                  ? batchMatch.ItemCode
-                  : "UNKNOWN ItemCode";
-          
-              const qtyProblem =
-                Number(batchMatch.UOM1_Qty) < Number(Qty)
-                  ? "Quantity Problem"
-                  : "";
-              const priceProblem =
-                Number(batchMatch.MRPPerPack) > Number(MRP)
-                  ? "Price Problem"
-                  : "";
-          
+
+            for (const batchMatch of batchMatches) {
+              if (remainingQty <= 0) break; // No need to process further if quantity is fulfilled
+
+              const availableQty = Number(batchMatch.UOM2_Piece_Qty);
+
               if (
-                Number(batchMatch.UOM1_Qty) >= Number(Qty) &&
-                Number(batchMatch.MRPPerPack) <= Number(MRP)
+                availableQty >= remainingQty ||
+                availableQty <= remainingQty
               ) {
-                // Success order - Add to ordersToUpdate
-                ordersToUpdate.push({
-                  ...orderRow,
-                  MKSU: NEW_MKSU_COLUMN,
-                  ItemCode: NEW_ItemCode_COLUMN,
-                });
-              } else if (qtyProblem) {
-                // Check if the MKSU is already in ordersToUpdate
-                const isInOrdersToUpdate = ordersToUpdate.some(
-                  (order) => order.MKSU === batchMatch.MKSU
-                );
-          
-                // If not in ordersToUpdate, add to pendingorder
-                if (!isInOrdersToUpdate) {
-                  pendingorder.push({
+                // The batch has enough quantity to fulfill the order
+                if (Number(batchMatch.MRPPerPack) <= Number(MRP)) {
+                  const dmartQuotation = dmartQutationData.find(
+                    (q) =>
+                      q.Category === batchMatch.Category &&
+                      q.LoyaltyProgram === "DMART"
+                  );
+                  if (dmartQuotation) {
+                    const discountAmount =
+                      (MRP * dmartQuotation.MarkDown) / 100;
+                    const finalPrice = MRP - discountAmount;
+                    ordersToUpdate.push({
+                      ...orderRow,
+                      MKSU: masterRow.MKSU,
+                      ItemCode: batchMatch.ItemCode,
+                      DiscountPrice: finalPrice,
+                    });
+                  }
+                } else {
+                  valuemismatch.push({
                     ...orderRow,
-                    MKSU: NEW_MKSU_COLUMN,
-                    ItemCode: NEW_ItemCode_COLUMN,
-                    qtyProblem,
+                    priceProblem: "Price Problem",
                   });
                 }
-              } else if (priceProblem) {
-                // Value mismatch - Add to valuemismatch
-                valuemismatch.push({ ...orderRow, priceProblem });
+
+                // Update batch quantity and fulfill the order
+                const reduceUom2andQTY = availableQty - remainingQty;
+                console.log("before availableqty", availableQty);
+                batchMatch.UOM2_Piece_Qty = reduceUom2andQTY;
+
+                // Update the batch immediately
+                await BatchOrder.updateOne(
+                  { ItemCode: batchMatch.ItemCode, MKSU: batchMatch.MKSU },
+                  { $set: { UOM2_Piece_Qty: reduceUom2andQTY } }
+                );
+
+                remainingQty = 0; // Order fulfilled
+              } else {
+                // The batch does not have enough quantity to fulfill the order
+                if (Number(batchMatch.MRPPerPack) <= Number(MRP)) {
+                  pendingorder.push({
+                    ...orderRow,
+                    MKSU: masterRow.MKSU,
+                    ItemCode: batchMatch.ItemCode,
+                    qtyProblem: "Quantity Problem",
+                  });
+                } else {
+                  valuemismatch.push({
+                    ...orderRow,
+                    MKSU: masterRow.MKSU,
+                    ItemCode: batchMatch.ItemCode,
+                    priceProblem: "Price Problem",
+                  });
+                }
+
+                // Use up all the available quantity in this batch
+                remainingQty -= availableQty;
+                batchMatch.UOM2_Piece_Qty = 0;
+
+                // Update the batch immediately
+                await BatchOrder.updateOne(
+                  { ItemCode: batchMatch.ItemCode, MKSU: batchMatch.MKSU },
+                  { $set: { UOM2_Piece_Qty: 0 } }
+                );
               }
-            } else {
-              // Out of Stock - Add to outOfStocks
-              outOfStocks.push(orderRow);
             }
-          });
-          
-          
-        });
+
+            if (remainingQty > 0) {
+              // If there's still remainingQty after checking all batch matches, add it to outOfStocks
+              outOfStocks.push({
+                ...orderRow,
+                MKSU: MKSU,
+                ItemCode: masterRow.ItemCode,
+              });
+            }
+          }
+        }
       }
-    });
+    }
 
     // Insert matched data into CustomerOrder
     if (ordersToUpdate.length > 0) {
@@ -155,19 +180,16 @@ exports.uploadCustomerOrder = async (req, res) => {
       console.log("Orders successfully updated in CustomerOrder");
     }
 
-    // Insert value mismatch data
     if (valuemismatch.length > 0) {
       await Valuemismatch.insertMany(valuemismatch);
       console.log("Orders successfully added to Valuemismatch");
     }
 
-    // Insert pending orders data
     if (pendingorder.length > 0) {
       await PendingOrder.insertMany(pendingorder);
       console.log("Orders successfully added to PendingOrder");
     }
 
-    // Insert out-of-stock data
     if (outOfStocks.length > 0) {
       await OutOfStock.insertMany(outOfStocks);
       console.log("Orders successfully added to OutOfStock");
