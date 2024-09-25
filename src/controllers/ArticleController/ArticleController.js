@@ -46,3 +46,22 @@ exports.getArticleFile = async (req, res) => {
     res.status(500).json({ message: "Error fetching data", error });
   }
 };
+
+
+exports.deleteArticles = async (req, res) => {
+  try {
+    const { articleType } = req.params;
+
+    if (articleType === "D-mart") {
+      await Dmart.deleteMany({}); 
+    } else if (articleType === "Spaar") {
+      await SparModel.deleteMany({}); 
+    } else {
+      return res.status(400).json({ message: "Invalid article type." });
+    }
+
+    return res.status(200).json({ message: `${articleType} articles deleted successfully.` });
+  } catch (error) {
+    return res.status(500).json({ message: "Error deleting articles", error });
+  }
+};
