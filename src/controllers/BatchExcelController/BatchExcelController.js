@@ -40,7 +40,7 @@ exports.uploadBatchExcel = async (req, res) => {
         return {
           ...batchRow,
           MKSU: masterRow.MKSU, // Add the MKSU field from master data
-          MRPPerPack: masterRow.MRPPerPack, //masterrow.MRPPerPack
+          // MRPPerPack: masterRow.MRPPerPack, //masterrow.MRPPerPack
           UOM2_Piece_Qty: calculatedUom2_Piece_Qty, //add master.UOM1_Piece divide by batchRow.SaleableStock
         };
       } else {
