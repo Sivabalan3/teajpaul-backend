@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { ArticleUploadController ,getArticleFile} = require('../../controllers/ArticleController/ArticleController');
+const { ArticleUploadController ,getArticleFile,deleteArticles} = require('../../controllers/ArticleController/ArticleController');
 
 // Configure multer for file uploads
 const upload = multer({
@@ -11,4 +11,6 @@ const upload = multer({
 
 router.post('/article/:articleType', upload.single('file'), ArticleUploadController);
 router.get('/article/:articleType',getArticleFile)
+router.delete("/article/delete/:articleType", deleteArticles);
 module.exports = router;
+ 
