@@ -87,34 +87,59 @@ exports.uploadCustomerOrder = async (req, res) => {
 
             for (let index = 0; index < batchMatches.length; index++) {
               const batchMatch = batchMatches[index];
-
+            
               if (remainingQty <= 0) break; // No need to process further if quantity is fulfilled
-
+            
               let availableQty = Number(batchMatch.UOM2_Piece_Qty);
               if (availableQty <= 0) {
                 continue; // Skip batches that have no available quantity
               }
-
-              if (
-                availableQty >= remainingQty
-                // ||
-                // availableQty <= remainingQty
-              ) {
-                // The batch has enough quantity to fulfill the order
-                if (Number(batchMatch.MRPPerPack) <= Number(MRP)) {
+            
+              // Check MKSU before quantity reduction
+              if (masterRow.MKSU !== batchMatch.MKSU) {
+                // Push to outOfStocks without reducing quantity
+                outOfStocks.push({
+                  ...orderRow,
+                  MKSU: masterRow.MKSU,
+                  ItemCode: batchMatch.ItemCode,
+                  issue: "mksu missing"
+                });
+                console.log("Pushed to outOfStocks due to mismatched MKSU");
+                continue; // Skip further processing for this batch
+              }
+            
+              // First check if batch MRP is greater than order MRP, push to valuemismatch if true
+              if (Number(batchMatch.MRPPerPack) > Number(MRP)) {
+                valuemismatch.push({
+                  ...orderRow,
+                  MKSU: masterRow.MKSU,
+                  ItemCode: batchMatch.ItemCode,
+                  priceProblem: "Price Problem",
+                });
+                console.log(
+                  "Pushed to valuemismatch due to price mismatch: batch MRP:",
+                  batchMatch.MRPPerPack,
+                  "order MRP:",
+                  MRP
+                );
+                continue; // Skip further processing for this batch due to price mismatch
+              }
+            
+              // Check if batch MRP is less than or equal to order MRP
+              if (Number(batchMatch.MRPPerPack) <= Number(MRP)) {
+                if (availableQty >= remainingQty) {
+                  // The batch has enough quantity to fulfill the order
                   const dmartQuotation = dmartQutationData.find(
                     (q) =>
                       q.Category === batchMatch.Category &&
                       q.LoyaltyProgram === "DMART"
                   );
                   if (dmartQuotation) {
-                    const discountAmount =
-                      (MRP * dmartQuotation.MarkDown) / 100;
+                    const discountAmount = (MRP * dmartQuotation.MarkDown) / 100;
                     const finalPrice = MRP - discountAmount;
-                    const fulfilledQty =
-                      availableQty >= remainingQty
-                        ? remainingQty
-                        : availableQty;
+                    const fulfilledQty = remainingQty; // Fulfill the entire remaining quantity
+                    const neededQty = remainingQty - fulfilledQty; // Calculate needed quantity, should be 0 if fulfilled
+            
                     // Success order - store reduced by quantity
                     ordersToUpdate.push({
                       ...orderRow,
@@ -122,85 +147,75 @@ exports.uploadCustomerOrder = async (req, res) => {
                       ItemCode: batchMatch.ItemCode,
                       DiscountPrice: finalPrice,
                       fulfilledQty: fulfilledQty, // Store the fulfilled quantity
+                      neededQty: neededQty, // Store the needed quantity, in this case 0
                     });
+            
+                    // Update the available quantity of the batch
+                    batchMatch.UOM2_Piece_Qty -= remainingQty;
+            
+                    console.log(
+                      "Batch has enough: availableQty:",
+                      availableQty,
+                      "reduced by:",
+                      remainingQty
+                    );
                   }
-                } else if (Number(batchMatch.MRPPerPack) >= Number(MRP)) {
-                  valuemismatch.push({
+            
+                  // Update the batch immediately with the reduced quantity
+                  await BatchOrder.updateOne(
+                    { _id: batchMatch._id }, // Unique identifier for batchMatch
+                    { $set: { UOM2_Piece_Qty: batchMatch.UOM2_Piece_Qty } }
+                  );
+            
+                  remainingQty = 0; // Order fully fulfilled
+                } else if (availableQty <= remainingQty) {
+                  // The batch does not have enough quantity to fulfill the order
+                  const neededQty = remainingQty - availableQty; // Calculate how much more is needed
+                  const fulfilledQty = availableQty;
+            
+                  // Success order - store fulfilled quantity
+                  ordersToUpdate.push({
                     ...orderRow,
                     MKSU: masterRow.MKSU,
                     ItemCode: batchMatch.ItemCode,
-                    priceProblem: "Price Problem",
+                    DiscountPrice: batchMatch.MRPPerPack,
+                    fulfilledQty: fulfilledQty, // Store the fulfilled quantity
+                    neededQty: neededQty, // Store the remaining needed quantity
                   });
+            
+                  // Use up all available quantity in this batch, but the order is not yet fully fulfilled
+                  remainingQty -= availableQty; // Reduce the remaining quantity by availableQty
+                  batchMatch.UOM2_Piece_Qty = 0; // Set the batch quantity to 0 since it's fully used
+            
+                  console.log(
+                    "Batch used up: availableQty:",
+                    availableQty,
+                    "remainingQty:",
+                    remainingQty
+                  );
+            
+                  // Update the batch to reflect no available quantity
+                  await BatchOrder.updateOne(
+                    { _id: batchMatch._id }, // Unique identifier for batchMatch
+                    { $set: { UOM2_Piece_Qty: 0 } }
+                  );
                 }
-
-                // Update the available quantity of the batch
-                batchMatch.UOM2_Piece_Qty -= remainingQty;
-                console.log(
-                  "Batch has enough: availableQty:",
-                  availableQty,
-                  "reduced by:",
-                  remainingQty
-                );
-
-                // Update the batch immediately with the reduced quantity
-                await BatchOrder.updateOne(
-                  { _id: batchMatch._id }, // Unique identifier for batchMatch
-                  { $set: { UOM2_Piece_Qty: batchMatch.UOM2_Piece_Qty } }
-                );
-
-                remainingQty = 0; // Order fully fulfilled
-              } else {
-                // The batch does not have enough quantity to fulfill the order
-                if (Number(batchMatch.MRPPerPack) <= Number(MRP)) {
-                  // pendingorder.push({
-                  //   ...orderRow,
-                  //   MKSU: masterRow.MKSU,
-                  //   ItemCode: batchMatch.ItemCode,
-                  //   qtyProblem: "Quantity Problem",
-                  //   remainingQty: remainingQty - availableQty, // Push the remaining quantity that needs to be fulfilled
-                  // });
-                  // Store the fulfilled quantity in the success order
-                  pendingorder.push({
-                    ...orderRow,
-                    MKSU: masterRow.MKSU,
-                    ItemCode: batchMatch.ItemCode,
-                    posible: availableQty, // Store only the available quantity as fulfilled
-                  });
-                } else {
-                  valuemismatch.push({
-                    ...orderRow,
-                    MKSU: masterRow.MKSU,
-                    ItemCode: batchMatch.ItemCode,
-                    priceProblem: "Price Problem",
-                  });
-                }
-
-                // Use up all available quantity in this batch, but the order is not yet fully fulfilled
-                remainingQty -= availableQty; // Reduce the remaining quantity by availableQty
-                batchMatch.UOM2_Piece_Qty = 0; // Set the batch quantity to 0 since it's fully used
-
-                console.log(
-                  "Batch used up: availableQty:",
-                  availableQty,
-                  "remainingQty:",
-                  remainingQty
-                );
-
-                // Update the batch to reflect no available quantity
-                await BatchOrder.updateOne(
-                  { _id: batchMatch._id }, // Unique identifier for batchMatch
-                  { $set: { UOM2_Piece_Qty: 0 } }
-                );
               }
             }
+            
 
-            if (remainingQty > 0) {
-              // If there's still remainingQty after checking all batch matches, add it to outOfStocks
-              outOfStocks.push({
+            if (remainingQty > 0 ) {
+              // If there's still remainingQty after checking all batch matches, add it to pendingorder
+              pendingorder.push({
                 ...orderRow,
                 MKSU: MKSU,
                 ItemCode: masterRow.ItemCode,
+                neededQty: remainingQty, // Store the remaining needed quantity
               });
+              console.log(
+                "Pushed to pendingorder with neededQty:",
+                remainingQty
+              );
             }
           }
         }
