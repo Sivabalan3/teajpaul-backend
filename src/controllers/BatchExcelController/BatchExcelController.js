@@ -57,7 +57,7 @@ exports.uploadBatchExcel = async (req, res) => {
 
     res.status(200).json(insertedData);
   } catch (error) {
-    console.error("Error uploading file:", error);
+    // console.error("Error uploading file:", error);
     res.status(500).json({ message: "Error uploading file", error });
   }
 };
@@ -85,7 +85,7 @@ exports.updateBatchExcel = async (req, res) => {
 
     res.status(200).json({ message: "Data updated successfully" });
   } catch (error) {
-    console.error("Error updating data", error);
+    // console.error("Error updating data", error);
     res.status(500).json({ message: "Error updating data", error });
   }
 };
@@ -112,7 +112,7 @@ exports.deleteBatchExcel = async (req, res) => {
       message: "Existing Batch file deleted successfully!",
     });
   } catch (error) {
-    console.error("Error deleting file:", error); // Log the error for debugging
+    // console.error("Error deleting file:", error); // Log the error for debugging
     res
       .status(500)
       .json({ message: "Error deleting file", error: error.message });

@@ -56,11 +56,11 @@ exports.uploadCustomerOrder = async (req, res) => {
         );
 
         if (matchedDmartArticles.length === 0) {
-          console.log(
-            "No match found for EAN:",
-            orderEan,
-            "in D-mart articles."
-          );
+          // console.log(
+          //   "No match found for EAN:",
+          //   orderEan,
+          //   "in D-mart articles."
+          // );
           continue;
         }
 
@@ -104,7 +104,7 @@ exports.uploadCustomerOrder = async (req, res) => {
                   ItemCode: batchMatch.ItemCode,
                   issue: "mksu missing"
                 });
-                console.log("Pushed to outOfStocks due to mismatched MKSU");
+                // console.log("Pushed to outOfStocks due to mismatched MKSU");
                 continue; // Skip further processing for this batch
               }
             
@@ -116,12 +116,12 @@ exports.uploadCustomerOrder = async (req, res) => {
                   ItemCode: batchMatch.ItemCode,
                   priceProblem: "Price Problem",
                 });
-                console.log(
-                  "Pushed to valuemismatch due to price mismatch: batch MRP:",
-                  batchMatch.MRPPerPack,
-                  "order MRP:",
-                  MRP
-                );
+                // console.log(
+                //   "Pushed to valuemismatch due to price mismatch: batch MRP:",
+                //   batchMatch.MRPPerPack,
+                //   "order MRP:",
+                //   MRP
+                // );
                 continue; // Skip further processing for this batch due to price mismatch
               }
             
@@ -153,12 +153,12 @@ exports.uploadCustomerOrder = async (req, res) => {
                     // Update the available quantity of the batch
                     batchMatch.UOM2_Piece_Qty -= remainingQty;
             
-                    console.log(
-                      "Batch has enough: availableQty:",
-                      availableQty,
-                      "reduced by:",
-                      remainingQty
-                    );
+                    // console.log(
+                    //   "Batch has enough: availableQty:",
+                    //   availableQty,
+                    //   "reduced by:",
+                    //   remainingQty
+                    // );
                   }
             
                   // Update the batch immediately with the reduced quantity
@@ -187,12 +187,12 @@ exports.uploadCustomerOrder = async (req, res) => {
                   remainingQty -= availableQty; // Reduce the remaining quantity by availableQty
                   batchMatch.UOM2_Piece_Qty = 0; // Set the batch quantity to 0 since it's fully used
             
-                  console.log(
-                    "Batch used up: availableQty:",
-                    availableQty,
-                    "remainingQty:",
-                    remainingQty
-                  );
+                  // console.log(
+                  //   "Batch used up: availableQty:",
+                  //   availableQty,
+                  //   "remainingQty:",
+                  //   remainingQty
+                  // );
             
                   // Update the batch to reflect no available quantity
                   await BatchOrder.updateOne(
@@ -212,10 +212,10 @@ exports.uploadCustomerOrder = async (req, res) => {
                 ItemCode: masterRow.ItemCode,
                 neededQty: remainingQty, // Store the remaining needed quantity
               });
-              console.log(
-                "Pushed to pendingorder with neededQty:",
-                remainingQty
-              );
+              // console.log(
+              //   "Pushed to pendingorder with neededQty:",
+              //   remainingQty
+              // );
             }
           }
         }
@@ -225,29 +225,29 @@ exports.uploadCustomerOrder = async (req, res) => {
     // Insert matched data into CustomerOrder
     if (ordersToUpdate.length > 0) {
       await CustomerOrder.insertMany(ordersToUpdate);
-      console.log("Orders successfully updated in CustomerOrder");
+      // console.log("Orders successfully updated in CustomerOrder");
     }
 
     if (valuemismatch.length > 0) {
       await Valuemismatch.insertMany(valuemismatch);
-      console.log("Orders successfully added to Valuemismatch");
+      // console.log("Orders successfully added to Valuemismatch");
     }
 
     if (pendingorder.length > 0) {
       await PendingOrder.insertMany(pendingorder);
-      console.log("Orders successfully added to PendingOrder");
+      // console.log("Orders successfully added to PendingOrder");
     }
 
     if (outOfStocks.length > 0) {
       await OutOfStock.insertMany(outOfStocks);
-      console.log("Orders successfully added to OutOfStock");
+      // console.log("Orders successfully added to OutOfStock");
     }
 
     res.status(200).json({
       message: "File uploaded and data processed successfully!",
     });
   } catch (error) {
-    console.error("Error uploading file:", error);
+    // console.error("Error uploading file:", error);
     res.status(500).json({ message: "Error uploading file", error });
   }
 };
@@ -305,7 +305,7 @@ exports.DeleteAllOrderfile = async (req, res) => {
       message: "Existing files deleted successfully!",
     });
   } catch (error) {
-    console.error("Error deleting files:", error); // Log the error for debugging
+    // console.error("Error deleting files:", error); // Log the error for debugging
     res
       .status(500)
       .json({ message: "Error deleting files", error: error.message });

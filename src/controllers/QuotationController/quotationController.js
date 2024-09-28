@@ -7,7 +7,7 @@ const fs = require('fs');
 exports.QutationUpload = async (req, res) => {
   try {
     const { QutationType} = req.params;
-    console.log("qutationtype",QutationType)
+    // console.log("qutationtype",QutationType)
     const file = req.file;
 
     if (!file) {
@@ -23,7 +23,7 @@ exports.QutationUpload = async (req, res) => {
       
       res.status(200).json({ message: "D-MART Qutation uploaded successfully!" });
     } else if (QutationType=== "SPAR-qutation") {
-      console.log("SPAR Qutation processing logic goes here");
+      // console.log("SPAR Qutation processing logic goes here");
       res.status(200).json({ message: "SPAR Qutation processing complete!" });
     } else {
       res.status(400).json({ message: "Invalid QutationTypeprovided" });
@@ -35,14 +35,14 @@ exports.QutationUpload = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Error uploading Qutation:", error);
+    // console.error("Error uploading Qutation:", error);
     res.status(500).json({ message: "Error uploading Qutation", error });
   }
 };
 exports.getQutationsByType = async (req, res) => {
   try {
     const { QutationType } = req.params;
-    console.log("qutationtype",QutationType)
+    // console.log("qutationtype",QutationType)
     const DmartData = await DmartQutation.find({});
     const SparData = await SparQutation.find({});
     if (QutationType === "D-martqutation") {
@@ -70,7 +70,7 @@ exports.deleteAllQutations = async (req, res) => {
       sparResult 
     });
   } catch (error) {
-    console.error("Error deleting quotations:", error);
+    // console.error("Error deleting quotations:", error);
     res.status(500).json({ message: "Failed to delete all quotations", error });
   }
 };
