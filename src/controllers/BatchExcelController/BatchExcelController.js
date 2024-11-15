@@ -28,14 +28,23 @@ exports.uploadBatchExcel = async (req, res) => {
         (masterRow) => String(masterRow.ItemCode).trim() === batchItemCode
       );
 
-      // Calculate the totalQty for matching items in masterData
-      const calculatedUom2_Piece_Qty = masterData
+      // // Calculate the totalQty for matching items in masterData
+      // const calculatedUom2_Piece_Qty = masterData
+      //   .filter((master) => String(master.ItemCode).trim() === batchItemCode)
+      //   .map((master) => {
+      //     // Calculation and rounding based on matching item codes
+      //     return Math.round(batchRow.SaleableStock / master.UOM2_Piece);
+      //   });
+        const calculatedUom2_Piece_Qty = masterData
         .filter((master) => String(master.ItemCode).trim() === batchItemCode)
         .map((master) => {
-          // Calculation and rounding based on matching item codes
-          return Math.round(batchRow.SaleableStock / master.UOM2_Piece);
+          const preciseQty = batchRow.SaleableStock / master.UOM2_Piece;
+          // Round to 1 decimal place
+          return Math.round(preciseQty * 10) / 10;
         });
-
+      
+      // console.log(calculatedUom2_Piece_Qty);
+      
       if (masterRow) {
         return {
           ...batchRow,

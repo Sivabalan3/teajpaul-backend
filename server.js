@@ -20,6 +20,9 @@ app.use('/api/excel', BatchExcelRoutes );
 app.use('/api/excel',CustomerOrdereExcelRoutes);
 app.use('/api/excel',QutationRoutes)
 app.use('/api/auth',AuthRoutes)
-
+app.get('/', (req, res) => {
+    res.send('Backend is running - Teajpaul');
+  });
+  
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
